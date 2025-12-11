@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Revision Tracker</title>
+    
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌸</text></svg>">
+
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;600&display=swap" rel="stylesheet">
     
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
@@ -76,6 +78,7 @@
             cursor: pointer; font-size: 1.2rem; box-shadow: var(--shadow); transition: transform 0.2s;
         }
         .control-btn:hover { transform: scale(1.1); }
+        .control-btn.active { background: var(--primary-color); color: white; border-color: var(--primary-color); }
 
         .palette-container {
             position: absolute; top: 0; left: 0; display: flex; gap: 8px; z-index: 10;
@@ -267,10 +270,17 @@
 </div>
 
 <div class="pomodoro-widget">
-    <span id="timerDisplay" class="timer-display">25:00</span>
-    <button class="timer-btn" id="timerToggle" onclick="toggleTimer()" title="Start/Pause">▶</button>
-    <button class="timer-btn secondary" onclick="resetTimer()" title="Reset">↻</button>
-    <button class="timer-btn secondary" onclick="togglePiP()" title="Pop-out Widget" style="font-size:1.1rem; margin-left:5px;">⏏️</button>
+    <div id="pomoStandard" style="display:flex; align-items:center; gap:10px;">
+        <span id="timerDisplay" class="timer-display">25:00</span>
+        <button class="timer-btn" id="timerToggle" onclick="toggleTimer()" title="Start/Pause">▶</button>
+        <button class="timer-btn secondary" onclick="resetTimer()" title="Reset">↻</button>
+        <button class="timer-btn secondary" onclick="togglePiP()" title="Pop-out Widget" style="font-size:1.1rem;">⏏️</button>
+    </div>
+    <div id="pomoBreak" style="display:none; align-items:center; gap:8px;">
+        <button class="timer-btn secondary" onclick="startTimerSession(5)" title="5 min Break" style="width:auto; padding:0 12px; border-radius:15px; font-size:0.85rem;">5m ☕</button>
+        <button class="timer-btn secondary" onclick="startTimerSession(10)" title="10 min Break" style="width:auto; padding:0 12px; border-radius:15px; font-size:0.85rem;">10m 🧘</button>
+        <button class="timer-btn" onclick="startTimerSession(25)" title="Work 25 min" style="width:auto; padding:0 12px; border-radius:15px; font-size:0.85rem;">25m 📚</button>
+    </div>
 </div>
 
 <canvas id="pipCanvas" width="300" height="150" style="display:none;"></canvas>
@@ -278,13 +288,13 @@
 
 <div id="introModal" class="intro-overlay">
     <div class="intro-card">
-        <h2 class="intro-title">Welcome Friend! 🌸</h2>
+        <h2 class="intro-title">Welcome Darling! 🌸</h2>
         <ul class="intro-list">
             <li><span class="intro-icon">❤</span> <b>Hearts:</b> Click to cycle priority (Red = High, Green = Low).</li>
             <li><span class="intro-icon">🧘</span> <b>Zen Mode:</b> Focus on just one task at a time.</li>
             <li><span class="intro-icon">🎲</span> <b>Pick for Me:</b> Let the app choose what you study next.</li>
             <li><span class="intro-icon">🖐</span> <b>Drag & Drop:</b> Reorder your study list easily.</li>
-            <li><span class="intro-icon">🍅</span> <b>Timer:</b> Use the Pomodoro widget with Pop-out mode!</li>
+            <li><span class="intro-icon">🍅</span> <b>Timer:</b> Use the Pomodoro widget (bottom right).</li>
             <li><span class="intro-icon">🎨</span> <b>Themes:</b> Change colors using dots (top left).</li>
         </ul>
         <button class="btn-intro-close" onclick="closeIntro()">Got it! Let's Study ✨</button>
@@ -353,115 +363,82 @@
         }
     }
 
-    /* --- POMODORO WITH DRIFT FIX & PiP --- */
-    let timerInterval;
-    let targetTime = null; // Timestamp when timer ends
-    let remainingSeconds = 25 * 60; 
-    let isTimerRunning = false;
+    /* --- POMODORO --- */
+    let timerInterval; let timerTime = 25 * 60; let isTimerRunning = false;
+    let targetTime = null; let remainingSeconds = 25 * 60;
 
     function getFormattedTime(seconds) {
-        const m = Math.floor(seconds / 60);
-        const s = seconds % 60;
+        const m = Math.floor(seconds / 60); const s = seconds % 60;
         return `${m}:${s < 10 ? '0' : ''}${s}`;
     }
-
     function updateTimerDisplay() {
         const timeStr = getFormattedTime(remainingSeconds);
         document.getElementById('timerDisplay').innerText = timeStr;
-        // Also update PiP if active
-        if(document.pictureInPictureElement) {
-            drawPiP(timeStr);
-        }
+        if(document.pictureInPictureElement) drawPiP(timeStr);
     }
-
     function toggleTimer() {
         const btn = document.getElementById('timerToggle');
         if (isTimerRunning) {
-            // PAUSE
-            clearInterval(timerInterval);
-            isTimerRunning = false;
-            targetTime = null; // Clear target
-            btn.innerText = "▶";
+            clearInterval(timerInterval); isTimerRunning = false; targetTime = null; btn.innerText = "▶";
         } else {
-            // START
-            initAudio();
-            isTimerRunning = true;
-            btn.innerText = "⏸";
-            
-            // Calculate target time based on CURRENT remaining
+            initAudio(); isTimerRunning = true; btn.innerText = "⏸";
             targetTime = Date.now() + (remainingSeconds * 1000);
-            
             timerInterval = setInterval(() => {
                 const now = Date.now();
                 const diff = Math.ceil((targetTime - now) / 1000);
-                
-                if (diff > 0) {
-                    remainingSeconds = diff;
-                    updateTimerDisplay();
-                } else {
-                    remainingSeconds = 0;
-                    updateTimerDisplay();
-                    clearInterval(timerInterval);
-                    isTimerRunning = false;
-                    targetTime = null;
-                    btn.innerText = "▶";
-                    playTone('alarm');
-                    alert("Time's up! ☕");
+                if (diff > 0) { remainingSeconds = diff; updateTimerDisplay(); } 
+                else { 
+                    // TIMER FINISHED
+                    remainingSeconds = 0; updateTimerDisplay(); clearInterval(timerInterval); 
+                    isTimerRunning = false; targetTime = null; btn.innerText = "▶"; 
+                    playTone('alarm'); 
+                    // Show Break Options
+                    document.getElementById('pomoStandard').style.display = 'none';
+                    document.getElementById('pomoBreak').style.display = 'flex';
                 }
             }, 1000);
         }
     }
-
-    function resetTimer() {
-        clearInterval(timerInterval);
-        isTimerRunning = false;
-        targetTime = null;
-        remainingSeconds = 25 * 60;
-        document.getElementById('timerToggle').innerText = "▶";
+    function resetTimer() { 
+        clearInterval(timerInterval); isTimerRunning = false; targetTime = null; 
+        remainingSeconds = 25 * 60; document.getElementById('timerToggle').innerText = "▶"; 
+        updateTimerDisplay(); 
+        // Ensure standard view
+        document.getElementById('pomoStandard').style.display = 'flex';
+        document.getElementById('pomoBreak').style.display = 'none';
+    }
+    
+    /* NEW: Start Session (Break/Work) */
+    function startTimerSession(minutes) {
+        remainingSeconds = minutes * 60;
         updateTimerDisplay();
+        // Switch back to standard view
+        document.getElementById('pomoBreak').style.display = 'none';
+        document.getElementById('pomoStandard').style.display = 'flex';
+        // Auto-Start
+        toggleTimer(); 
     }
 
-    /* --- PICTURE IN PICTURE LOGIC --- */
+    /* PiP */
     function drawPiP(text) {
-        const canvas = document.getElementById('pipCanvas');
-        const ctx = canvas.getContext('2d');
-        // Background
-        ctx.fillStyle = '#ffb7b2'; // Pink bg
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        // Text
-        ctx.fillStyle = '#4a4a4a';
-        ctx.font = 'bold 80px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(text, canvas.width/2, canvas.height/2);
+        const c = document.getElementById('pipCanvas'); const ctx = c.getContext('2d');
+        ctx.fillStyle = '#ffb7b2'; ctx.fillRect(0,0,c.width,c.height);
+        ctx.fillStyle = '#4a4a4a'; ctx.font = 'bold 80px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(text, c.width/2, c.height/2);
     }
-
     async function togglePiP() {
-        const video = document.getElementById('pipVideo');
-        const canvas = document.getElementById('pipCanvas');
-        
-        // Initial draw
+        const v = document.getElementById('pipVideo'); const c = document.getElementById('pipCanvas');
         drawPiP(getFormattedTime(remainingSeconds));
-
-        if (document.pictureInPictureElement) {
-            document.exitPictureInPicture();
-        } else {
-            if (video.srcObject === null) {
-                video.srcObject = canvas.captureStream();
-            }
-            try {
-                await video.play();
-                await video.requestPictureInPicture();
-            } catch (error) {
-                alert("PiP failed: " + error);
-            }
+        if (document.pictureInPictureElement) document.exitPictureInPicture();
+        else {
+            if (v.srcObject === null) v.srcObject = c.captureStream();
+            try { await v.play(); await v.requestPictureInPicture(); } catch (e) { alert("PiP failed: "+e); }
         }
     }
 
     /* --- MAIN LOGIC --- */
     let items = []; let isDarkMode = false; let currentTheme = 'pastel'; let hasCelebrated = false; let zenItemId = null;
     const priorities = ['normal', 'high', 'med', 'low'];
-    
     const svgHeart = '<svg class="heart-icon-svg" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';
 
     window.addEventListener('DOMContentLoaded', () => {
@@ -565,7 +542,9 @@
             wrapper.id = `wrapper-${item.id}`; wrapper.setAttribute('data-id', item.id);
 
             const heart = document.createElement('button'); heart.className = `btn-heart-priority`;
+            // USE SVG INSTEAD OF TEXT CHARACTER
             heart.innerHTML = svgHeart;
+            // Add proper fill class based on priority
             const svgEl = heart.querySelector('svg');
             if (item.done) svgEl.classList.add('fill-disabled');
             else svgEl.classList.add(`fill-${p}`);
