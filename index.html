@@ -515,7 +515,7 @@
             courses = JSON.parse(storedCourses);
         } else {
             const legacyItems = localStorage.getItem('revisionItems');
-            courses = [{ id: 'course-' + Date.now(), name: 'My Subject 1', items: legacyItems ? JSON.parse(legacyItems) : [] }];
+            courses = [{ id: 'course-' + Date.now(), name: 'General', items: legacyItems ? JSON.parse(legacyItems) : [] }];
         }
         
         initSortable();
